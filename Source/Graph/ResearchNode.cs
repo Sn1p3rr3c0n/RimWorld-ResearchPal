@@ -178,8 +178,10 @@ namespace ResearchPal
 
             // try get from cache
             bool result;
-            if ( _buildingPresentCache.TryGetValue( research, out result ) )
+            if ( _buildingPresentCache.TryGetValue( research, out result ))
+            {
                 return result;
+            }
 
             // do the work manually
             if ( research.requiredResearchBuilding == null ) {
@@ -188,6 +190,12 @@ namespace ResearchPal
                 result = Find.Maps.SelectMany(map => map.listerBuildings.allBuildingsColonist)
                              .OfType<Building_ResearchBench>()
                              .Any(b => research.CanBeResearchedAt(b, true));
+            }
+
+            //Allso check for Facilities
+            if (result)
+            {
+                result = MissingFacilities(research).Count == 0;
             }
 
             if ( result ) {
@@ -234,8 +242,10 @@ namespace ResearchPal
         {
             // try get from cache
             List<ThingDef> missing;
-            if ( _missingFacilitiesCache.TryGetValue( research, out missing ) )
+            if (_missingFacilitiesCache.TryGetValue(research, out missing))
+            {
                 return missing;
+            }
 
             // get list of all researches required before this
             var thisAndPrerequisites = research.Ancestors().Where( rpd => !rpd.IsFinished ).ToList();
@@ -244,6 +254,7 @@ namespace ResearchPal
             // get list of all available research benches
             var availableBenches = Find.Maps.SelectMany( map => map.listerBuildings.allBuildingsColonist )
                                        .OfType<Building_ResearchBench>();
+
             var availableBenchDefs = availableBenches.Select( b => b.def ).Distinct();
             missing = new List<ThingDef>();
 
@@ -251,23 +262,30 @@ namespace ResearchPal
             // TODO: We should really build this list recursively so we can re-use results for prerequisites.
             foreach ( var rpd in thisAndPrerequisites )
             {
-                if ( rpd.requiredResearchBuilding == null )
-                    continue;
+                if (rpd.requiredResearchBuilding != null)
+                {
+                    if (!availableBenchDefs.Contains(rpd.requiredResearchBuilding))
+                    {
+                        missing.Add(rpd.requiredResearchBuilding);
+                    }
+                }
 
-                if ( !availableBenchDefs.Contains( rpd.requiredResearchBuilding ) )
-                    missing.Add( rpd.requiredResearchBuilding );
-
-                if ( rpd.requiredResearchFacilities.NullOrEmpty() )
-                    continue;
-
-                foreach ( var facility in rpd.requiredResearchFacilities )
-                    if ( !availableBenches.Any( b => b.HasFacility( facility ) ) )
-                        missing.Add( facility );
+                if ( !rpd.requiredResearchFacilities.NullOrEmpty())
+                {
+                    foreach (var facility in rpd.requiredResearchFacilities)
+                    {
+                        if (!availableBenches.Any(b => b.HasFacility(facility)))
+                        {
+                            missing.Add(facility);
+                        }
+                    }
+                }
             }
 
             // add to cache
             missing = missing.Distinct().ToList();
             _missingFacilitiesCache.Add( research, missing );
+
             return missing;
         }
 
